@@ -16,4 +16,12 @@ describe('Tadoo API client', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
     await expect(api.tasks('td_test')).rejects.toMatchObject({ name: 'ApiError', status: 0 })
   })
+
+  it('sends the sign-up code and honeypot with registration', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ token: 'td_test', user: { id: 'u1', email: 'alex@example.com', createdAt: 'now' } }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    await api.register('alex@example.com', 'password123', 'invite-code', '')
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body).toEqual({ email: 'alex@example.com', password: 'password123', signupCode: 'invite-code', website: '' })
+  })
 })

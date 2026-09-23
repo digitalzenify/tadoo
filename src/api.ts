@@ -23,7 +23,8 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
 }
 
 export const api = {
-  register: (email: string, password: string) => request<{ token: string; user: User }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  authConfig: () => request<{ signupCodeRequired: boolean }>('/api/auth/config'),
+  register: (email: string, password: string, signupCode?: string, website?: string) => request<{ token: string; user: User }>('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password, signupCode, website }) }),
   login: (email: string, password: string) => request<{ token: string; user: User }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   me: (token: string) => request<{ user: User }>('/api/auth/me', {}, token),
   logout: (token: string) => request<void>('/api/auth/logout', { method: 'POST' }, token),

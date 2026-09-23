@@ -2,22 +2,35 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import { db, id, now, hash, passwordHash, passwordMatches, createToken, userFromToken, userFromApiKey, publicTask, publicUser, taskForUser } from './db.mjs'
+import { checkSignup, clientIp, createRateLimiter } from './security.mjs'
 import { aiBreakdown, aiEstimate, createTasksFromRamble, transcribeGroq } from './providers.mjs'
 import { buildSchedule } from './domain.mjs'
 
 const app = express()
 const port = Number(process.env.PORT || 8787)
+const signupCode = String(process.env.SIGNUP_CODE || '').trim()
+const registerLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: Number(process.env.REGISTER_LIMIT_PER_HOUR || 5) })
+const loginLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: Number(process.env.LOGIN_LIMIT_PER_15_MIN || 20) })
+app.set('trust proxy', 1)
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') || true, credentials: true }))
 app.use(express.json({ limit: '15mb' }))
 app.use((req, _res, next) => { req.requestId = id(); next() })
 const readBearer = req => req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null
 function auth(req, res, next) { const user = userFromToken(readBearer(req)) || userFromApiKey(req.headers['x-tadoo-api-key']); if (!user) return res.status(401).json({ error: 'Authentication required' }); req.user = user; next() }
-const validateEmail = email => typeof email === 'string' && /^\S+@\S+\.\S+$/.test(email)
+function rateLimited(res, limit) { if (limit.allowed) return false; res.set('Retry-After', String(limit.retryAfterSeconds)); return true }
 const taskPayload = body => ({ title: String(body.title || '').trim(), project: String(body.project || 'Inbox').trim() || 'Inbox', priority: Math.min(3, Math.max(1, Number(body.priority || 2))), durationMinutes: Math.min(180, Math.max(5, Number(body.durationMinutes || 15))), dueDate: body.dueDate || null, notes: String(body.notes || ''), parentId: body.parentId || null })
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'tadoo-api', time: now() }))
-app.post('/api/auth/register', (req, res) => { const { email, password } = req.body || {}; if (!validateEmail(email) || typeof password !== 'string' || password.length < 8) return res.status(400).json({ error: 'Use a valid email and a password of at least 8 characters' }); try { const user = { id: id(), email: email.toLowerCase(), password_hash: passwordHash(password), created_at: now() }; db.prepare('INSERT INTO users VALUES (@id,@email,@password_hash,@created_at)').run(user); const token = createToken(); db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(hash(token), user.id, new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()); res.status(201).json({ token, user: publicUser(user) }) } catch (error) { res.status(error.code === 'SQLITE_CONSTRAINT_UNIQUE' ? 409 : 500).json({ error: error.code === 'SQLITE_CONSTRAINT_UNIQUE' ? 'Email already registered' : 'Could not create account' }) } })
-app.post('/api/auth/login', (req, res) => { const { email, password } = req.body || {}; const user = db.prepare('SELECT * FROM users WHERE email=?').get(String(email || '').toLowerCase()); if (!user || !passwordMatches(String(password || ''), user.password_hash)) return res.status(401).json({ error: 'Invalid email or password' }); const token = createToken(); db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(hash(token), user.id, new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()); res.json({ token, user: publicUser(user) }) })
+app.get('/api/auth/config', (_req, res) => res.json({ signupCodeRequired: Boolean(signupCode) }))
+app.post('/api/auth/register', (req, res) => {
+  if (rateLimited(res, registerLimiter(clientIp(req)))) return res.status(429).json({ error: 'Too many sign-up attempts. Please try again later.' })
+  const problem = checkSignup(req.body || {}, signupCode)
+  if (problem) return res.status(problem.status).json({ error: problem.error })
+  const { email, password } = req.body
+  try { const user = { id: id(), email: email.toLowerCase(), password_hash: passwordHash(password), created_at: now() }; db.prepare('INSERT INTO users VALUES (@id,@email,@password_hash,@created_at)').run(user); const token = createToken(); db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(hash(token), user.id, new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()); res.status(201).json({ token, user: publicUser(user) }) } catch (error) { res.status(error.code === 'SQLITE_CONSTRAINT_UNIQUE' ? 409 : 500).json({ error: error.code === 'SQLITE_CONSTRAINT_UNIQUE' ? 'Email already registered' : 'Could not create account' }) } })
+app.post('/api/auth/login', (req, res) => {
+  if (rateLimited(res, loginLimiter(clientIp(req)))) return res.status(429).json({ error: 'Too many sign-in attempts. Please try again later.' })
+  const { email, password } = req.body || {}; const user = db.prepare('SELECT * FROM users WHERE email=?').get(String(email || '').toLowerCase()); if (!user || !passwordMatches(String(password || ''), user.password_hash)) return res.status(401).json({ error: 'Invalid email or password' }); const token = createToken(); db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(hash(token), user.id, new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString()); res.json({ token, user: publicUser(user) }) })
 app.post('/api/auth/logout', auth, (req, res) => { const token = readBearer(req); if (token) db.prepare('DELETE FROM sessions WHERE token_hash=?').run(hash(token)); res.status(204).end() })
 app.get('/api/auth/me', auth, (req, res) => res.json({ user: publicUser(req.user) }))
 app.post('/api/auth/api-key', auth, (req, res) => { const token = createToken('tdk_'); db.prepare('INSERT INTO api_keys VALUES (?,?,?,?,?)').run(id(), req.user.id, String(req.body?.name || 'Hermes agent'), hash(token), now()); res.status(201).json({ key: token, warning: 'Store this key securely. It will not be shown again.' }) })

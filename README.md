@@ -7,6 +7,7 @@ Tadoo is an open source, calm task workspace designed for short attention spans.
 - Focused Today, Inbox, and Upcoming views
 - SQLite task persistence with projects, priorities, durations, due dates, notes, subtasks, and completion state
 - Email/password authentication with 30-day sessions
+- Rate-limited, invite-code gated sign-up with a honeypot field
 - Personal API keys for Hermes agents and other automations
 - CRUD task API
 - Ramble endpoint accepting text or base64 audio
@@ -44,6 +45,14 @@ Register and store the returned token:
 curl -X POST http://localhost:8787/api/auth/register \
   -H 'content-type: application/json' \
   -d '{"email":"you@example.com","password":"use-a-long-password"}'
+```
+
+Sign-up is rate limited per IP (`REGISTER_LIMIT_PER_HOUR`, default 5) and a filled honeypot field rejects the request. Set `SIGNUP_CODE` to make the workspace invite-only: the API then requires a matching `signupCode`, and the web client reveals the field once `GET /api/auth/config` reports `signupCodeRequired`.
+
+```bash
+curl -X POST http://localhost:8787/api/auth/register \
+  -H 'content-type: application/json' \
+  -d '{"email":"you@example.com","password":"use-a-long-password","signupCode":"your-code"}'
 ```
 
 Create, read, edit, and delete tasks with either the session token or a personal API key:
