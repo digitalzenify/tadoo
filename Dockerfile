@@ -1,7 +1,9 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# better-sqlite3 ships prebuilt musl/glibc binaries and resolves them at runtime,
+# so install scripts are skipped: the alpine image carries no compiler toolchain.
+RUN npm ci --ignore-scripts
 COPY . .
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL

@@ -1,7 +1,9 @@
 FROM node:22-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev
+# better-sqlite3 ships prebuilt musl/glibc binaries and resolves them at runtime,
+# so install scripts are skipped: the alpine image carries no compiler toolchain.
+RUN npm ci --omit=dev --ignore-scripts
 COPY server ./server
 ENV NODE_ENV=production
 ENV PORT=8787
