@@ -9,6 +9,9 @@ Tadoo is an open source, calm task workspace designed for short attention spans.
 - Email/password authentication with 30-day sessions
 - Rate-limited, invite-code gated sign-up with a honeypot field
 - Personal API keys for Hermes agents and other automations
+- Settings page with appearance, text size, AI provider credentials and API key management
+- Labels and stacked filters for the task list
+- In-app API documentation and a ready-made agent connection prompt
 - CRUD task API
 - Ramble endpoint accepting text or base64 audio
 - Groq Whisper transcription when `GROQ_API_KEY` is configured
@@ -78,6 +81,19 @@ curl -X POST http://localhost:8787/api/auth/api-key \
 ```
 
 Use it as `X-Tadoo-API-Key` for agent requests. Key permissions currently match the owning user. It is intentionally scoped to task and scheduling operations by the API surface, not arbitrary database access.
+
+The application manages keys in Settings: list them, mint one (the raw key is returned exactly once and only its SHA-256 hash is stored), or revoke one. `GET /api/keys`, `POST /api/keys`, `DELETE /api/keys/:id` are the same operations over HTTP.
+
+## Workspace settings
+
+Settings are stored per account, so two people on one instance never share credentials:
+
+- `GET /api/settings` returns your settings with secrets masked and reports, per provider, whether it is configured and whether the key comes from your workspace or from the server env.
+- `PUT /api/settings` merges a patch. A field you omit is left alone, `null` clears a stored secret, and an empty string is ignored so a masked form can round-trip safely.
+- `theme` and `textSize` (`small`, `default`, `large`, `xlarge`) drive the interface.
+- `opencodeApiKey`, `opencodeBaseUrl`, `opencodeModel`, `groqApiKey`, `groqWhisperModel`, `hindsightUrl`, `hindsightApiKey` and `hindsightBank` override the matching environment variables for your own AI calls only.
+
+The same endpoint reference, with request bodies and curl examples, ships inside the app under API docs, together with a prompt that hands an agent the whole contract, generated in Settings under Connect your AI agent.
 
 Important endpoints:
 

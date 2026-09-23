@@ -1,6 +1,25 @@
 export type User = { id: string; email: string; createdAt: string }
-export type ApiTask = { id: string; title: string; project: string; priority: number; durationMinutes: number; dueDate: string | null; completed: boolean; notes: string; parentId: string | null; createdAt: string; updatedAt: string }
+export type ApiTask = { id: string; title: string; project: string; priority: number; durationMinutes: number; dueDate: string | null; completed: boolean; notes: string; parentId: string | null; labels: string[]; createdAt: string; updatedAt: string }
 export type RambleResult = { transcript: string; tasks: ApiTask[]; provider: string }
+
+export type WorkspaceSettings = {
+  theme: 'light' | 'dark'
+  textSize: 'small' | 'default' | 'large' | 'xlarge'
+  opencodeBaseUrl: string
+  opencodeModel: string
+  groqWhisperModel: string
+  hindsightUrl: string
+  hindsightBank: string
+  opencodeApiKey: string
+  opencodeApiKeySet: boolean
+  groqApiKey: string
+  groqApiKeySet: boolean
+  hindsightApiKey: string
+  hindsightApiKeySet: boolean
+}
+export type ProviderStatus = { opencode: boolean; groq: boolean; hindsight: boolean; opencodeSource: string; groqSource: string; hindsightSource: string }
+export type ApiKeyRecord = { id: string; name: string; createdAt: string }
+export type SettingsPayload = { settings: WorkspaceSettings; providers: ProviderStatus }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
 
@@ -44,6 +63,11 @@ export const api = {
     return request<RambleResult>('/api/ramble', { method: 'POST', body: JSON.stringify({ text: payload.text }) }, token)
   },
   reminder: (token: string, taskId: string, remindAt: string) => request(`/api/tasks/${taskId}/reminders`, { method: 'POST', body: JSON.stringify({ remindAt }) }, token),
+  settings: (token: string) => request<SettingsPayload>('/api/settings', {}, token),
+  saveSettings: (token: string, patch: Record<string, string | null>) => request<SettingsPayload>('/api/settings', { method: 'PUT', body: JSON.stringify(patch) }, token),
+  keys: (token: string) => request<{ keys: ApiKeyRecord[] }>('/api/keys', {}, token),
+  createKey: (token: string, name: string) => request<{ key: string; id: string }>('/api/keys', { method: 'POST', body: JSON.stringify({ name }) }, token),
+  deleteKey: (token: string, id: string) => request<void>(`/api/keys/${id}`, { method: 'DELETE' }, token),
 }
 
 function blobToBase64(blob: Blob): Promise<string> { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onloadend = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = reject; reader.readAsDataURL(blob) }) }
