@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+    volumes:
+      - tadoo-data:/app/data
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+  web:
+    build: .
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+volumes:
+  tadoo-data:

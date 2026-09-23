@@ -1,0 +1,10 @@
+{
+  "name": "Tadoo",
+  "short_name": "Tadoo",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f5f2",
+  "theme_color": "#f26b5e",
+  "description": "A calm task list for getting the right things done.",
+  "icons": []
+}
